@@ -11,7 +11,8 @@ import (
 )
 
 const (
-	MaxUndo = 10
+	MaxUndo       = 10
+	ScoreFilePath = "best_scores.json"
 
 	ColorReset  = "\033[0m"
 	ColorGreen  = "\033[32m"
@@ -41,17 +42,18 @@ type MoveRecord struct {
 }
 
 type GameState struct {
-	levelName string
-	player    Position
-	boxes     []Position
-	targets   []Position
-	walls     map[Position]bool
-	floor     map[Position]bool
-	width     int
-	height    int
-	undoStack []MoveRecord
-	steps     int
-	startTime time.Time
+	levelName  string
+	player     Position
+	boxes      []Position
+	targets    []Position
+	walls      map[Position]bool
+	floor      map[Position]bool
+	width      int
+	height     int
+	undoStack  []MoveRecord
+	steps      int
+	startTime  time.Time
+	scoreStore *ScoreStore
 }
 
 func loadLevel(filename string) (*Level, error) {
@@ -271,8 +273,13 @@ func (gs *GameState) render(message string) {
 	minutes := int(elapsed) / 60
 	seconds := int(elapsed) % 60
 
-	status := fmt.Sprintf(" %s | 步数: %d | 时间: %02d:%02d | 撤销: %d/%d | 目标: %d/%d ",
-		gs.levelName, gs.steps, minutes, seconds, gs.remainingUndo(), MaxUndo, onTarget, totalTargets)
+	bestDisplay := "--"
+	if gs.scoreStore != nil {
+		bestDisplay = gs.scoreStore.BestDisplay(gs.levelName)
+	}
+
+	status := fmt.Sprintf(" %s | 最佳: %s步 | 步数: %d | 时间: %02d:%02d | 撤销: %d/%d | 目标: %d/%d ",
+		gs.levelName, bestDisplay, gs.steps, minutes, seconds, gs.remainingUndo(), MaxUndo, onTarget, totalTargets)
 	fmt.Println(strings.Repeat("=", len(status)))
 	fmt.Println(status)
 	fmt.Println(strings.Repeat("=", len(status)))
@@ -456,6 +463,11 @@ func main() {
 		return
 	}
 
+	scoreStore, err := LoadScoreStore(ScoreFilePath)
+	if err != nil {
+		scoreStore = NewScoreStore()
+	}
+
 	totalStartTime := time.Now()
 	var gs *GameState
 	currentLevel := 0
@@ -465,6 +477,7 @@ func main() {
 	for currentLevel < len(levels) {
 		if gs == nil {
 			gs = parseLevel(levels[currentLevel])
+			gs.scoreStore = scoreStore
 			message = ""
 			waitingForKey = false
 		}
@@ -508,7 +521,11 @@ func main() {
 		}
 
 		if gs.isWin() {
-			gs.render("恭喜过关！")
+			levelName := levels[currentLevel].Name
+			if scoreStore.Update(levelName, gs.steps) {
+				scoreStore.Save(ScoreFilePath)
+			}
+			gs.render("恭喜过关！刷新最佳纪录！")
 			fmt.Println("\n按任意键进入下一关...")
 			waitForKey()
 			currentLevel++
