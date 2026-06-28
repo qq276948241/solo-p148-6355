@@ -8,6 +8,8 @@ import (
 	"strings"
 	"syscall"
 	"unsafe"
+
+	"sokoban/internal/score"
 )
 
 const (
@@ -53,7 +55,7 @@ type GameState struct {
 	undoStack  []MoveRecord
 	steps      int
 	startTime  time.Time
-	scoreStore *ScoreStore
+	scoreBoard *score.ScoreBoard
 }
 
 func loadLevel(filename string) (*Level, error) {
@@ -274,8 +276,8 @@ func (gs *GameState) render(message string) {
 	seconds := int(elapsed) % 60
 
 	bestDisplay := "--"
-	if gs.scoreStore != nil {
-		bestDisplay = gs.scoreStore.BestDisplay(gs.levelName)
+	if gs.scoreBoard != nil {
+		bestDisplay = gs.scoreBoard.BestDisplay(gs.levelName)
 	}
 
 	status := fmt.Sprintf(" %s | 最佳: %s步 | 步数: %d | 时间: %02d:%02d | 撤销: %d/%d | 目标: %d/%d ",
@@ -463,9 +465,9 @@ func main() {
 		return
 	}
 
-	scoreStore, err := LoadScoreStore(ScoreFilePath)
+	scoreBoard, err := score.Load(ScoreFilePath)
 	if err != nil {
-		scoreStore = NewScoreStore()
+		scoreBoard = score.NewScoreBoard(ScoreFilePath)
 	}
 
 	totalStartTime := time.Now()
@@ -477,7 +479,7 @@ func main() {
 	for currentLevel < len(levels) {
 		if gs == nil {
 			gs = parseLevel(levels[currentLevel])
-			gs.scoreStore = scoreStore
+			gs.scoreBoard = scoreBoard
 			message = ""
 			waitingForKey = false
 		}
@@ -522,8 +524,8 @@ func main() {
 
 		if gs.isWin() {
 			levelName := levels[currentLevel].Name
-			if scoreStore.Update(levelName, gs.steps) {
-				scoreStore.Save(ScoreFilePath)
+			if scoreBoard.Update(levelName, gs.steps) {
+				scoreBoard.Save()
 			}
 			gs.render("恭喜过关！刷新最佳纪录！")
 			fmt.Println("\n按任意键进入下一关...")
